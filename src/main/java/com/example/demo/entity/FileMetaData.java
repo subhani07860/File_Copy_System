@@ -26,7 +26,7 @@ public class FileMetaData {
 	private String fileId;
 	@CreatedDate // This annotation instructs Spring to populate this field
     @Column(name = "created_at", updatable = false) // updatable = false prevents updates after creation
-    private LocalDateTime createdAt;
+    private String createdAt;
 	private BigDecimal runId;
 	private String fileName;
 	private String filePath;
@@ -45,5 +45,6 @@ public class FileMetaData {
 	private String fileEncryptionKey;
 	private String fileCompression;
 	private String targetFileName;
+	private String isArchived;
 
 }

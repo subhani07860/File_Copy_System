@@ -17,24 +17,30 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class FileFilterUtility {
+
+	private static final Logger Logger = LoggerFactory.getLogger(FileFilterUtility.class);
 
 	/**
 	 * Determines if a given file should be included based on the provided filters.
 	 *
-	 * @param file The file to check.
+	 * @param file    The file to check.
 	 * @param filters The FileFilters object containing all filtering criteria.
 	 * @return true if the file passes all active filters, false otherwise.
 	 */
 	public static boolean validateFile(File file, FileFilters filters) {
-		System.out.println("\n--- Filtering File: " + file.getAbsolutePath() + " ---");
+		Logger.info("\n--- Filtering File: " + file.getAbsolutePath() + " ---");
 
 		if (filters == null) {
-			System.out.println("  Filter object is NULL. File included by default.");
+
+			Logger.info("  Filter object is NULL. File included by default.");
 			return true;
 		}
 
-		System.out.println("  Filters object present. Checking criteria...");
+		Logger.info("  Filters object present. Checking criteria...");
 
 		Path filePath = file.toPath();
 		String fileName = file.getName(); // e.g., "document.pdf"
@@ -103,18 +109,16 @@ public class FileFilterUtility {
 			}
 
 		} catch (IOException e) {
-			System.err.println("  Error reading attributes for filtering file: " + file.getAbsolutePath() + " - "
-					+ e.getMessage());
-			e.printStackTrace();
+
+			Logger.error("  Error reading attributes for filtering file: " + file.getAbsolutePath(), e);
 			return false;
 		} catch (NullPointerException e) { // Catch potential NPE if ownerAttr.getOwner() is null and not checked
-			System.err.println("  NullPointerException while processing file attributes for " + file.getAbsolutePath()
-					+ ": " + e.getMessage());
-			e.printStackTrace();
+
+			Logger.error("  NullPointerException while processing file attributes for " + file.getAbsolutePath(), e);
 			return false;
 		}
 
-		System.out.println("--- File PASSED all filter criteria: " + file.getAbsolutePath() + " ---");
+		Logger.info("--- File PASSED all filter criteria: " + file.getAbsolutePath() + " ---");
 		return true;
 	}
 
@@ -122,12 +126,12 @@ public class FileFilterUtility {
 
 	private static boolean checkFileDateAndAgeFilters(FileFilters filters, LocalDateTime creationTime,
 			LocalDateTime lastModifiedTime) {
-		System.out.println("  Checking File Date/Age Filters. Base Attribute: " + filters.getDateFilterBaseAttribute()
+		Logger.info("  Checking File Date/Age Filters. Base Attribute: " + filters.getDateFilterBaseAttribute()
 				+ ", Segmentation Type: " + filters.getFileAgeSegmentationType());
 
 		// No filter configured if base attribute is not set
 		if (filters.getDateFilterBaseAttribute() == null || filters.getDateFilterBaseAttribute().trim().isEmpty()) {
-			System.out.println("    No base date attribute specified. Date/Age filter skipped.");
+			Logger.info("    No base date attribute specified. Date/Age filter skipped.");
 			return true;
 		}
 
@@ -136,19 +140,19 @@ public class FileFilterUtility {
 
 		if ("creation".equals(baseAttributeLower)) {
 			dateToCheck = creationTime;
-			System.out.println("    Using Creation Date: " + creationTime);
+			Logger.info("    Using Creation Date: " + creationTime);
 		} else if ("modification".equals(baseAttributeLower)) {
 			dateToCheck = lastModifiedTime;
-			System.out.println("    Using Modification Date: " + lastModifiedTime);
+			Logger.info("    Using Modification Date: " + lastModifiedTime);
 		} else {
-			System.out.println("    Warning: Unknown dateFilterBaseAttribute: " + filters.getDateFilterBaseAttribute()
+			Logger.info("    Warning: Unknown dateFilterBaseAttribute: " + filters.getDateFilterBaseAttribute()
 					+ ". Date/Age filter skipped.");
 			return true;
 		}
 
 		// No segmentation type configured if not set
 		if (filters.getFileAgeSegmentationType() == null || filters.getFileAgeSegmentationType().trim().isEmpty()) {
-			System.out.println("    No file age segmentation type specified. Date/Age filter skipped.");
+			Logger.info("    No file age segmentation type specified. Date/Age filter skipped.");
 			return true;
 		}
 
@@ -156,33 +160,35 @@ public class FileFilterUtility {
 
 		switch (segmentationTypeLower) {
 		case "date_range":
-			System.out.println("    Applying Absolute Date Range: From=" + filters.getAbsoluteDateRangeFrom() + ", To="
+
+			Logger.info("    Applying Absolute Date Range: From=" + filters.getAbsoluteDateRangeFrom() + ", To="
 					+ filters.getAbsoluteDateRangeTo());
+
 			if (filters.getAbsoluteDateRangeFrom() != null
 					&& dateToCheck.isBefore(filters.getAbsoluteDateRangeFrom())) {
-				System.out.println("    EXCLUDED: Date is before 'from' date.");
+				Logger.info("    EXCLUDED: Date is before 'from' date.");
 				return false;
 			}
 			if (filters.getAbsoluteDateRangeTo() != null && dateToCheck.isAfter(filters.getAbsoluteDateRangeTo())) {
-				System.out.println("    EXCLUDED: Date is after 'to' date.");
+				Logger.info("    EXCLUDED: Date is after 'to' date.");
 				return false;
 			}
 			break;
 		case "file_age":
 			LocalDateTime now = LocalDateTime.now();
-			System.out.println("    Applying Age Range (Relative to " + baseAttributeLower + " date):");
+			Logger.info("    Applying Age Range (Relative to " + baseAttributeLower + " date):");
 
 			// Check Days
 			if (filters.getFileAgeDaysFrom() != null || filters.getFileAgeDaysTo() != null) {
 				long ageDays = ChronoUnit.DAYS.between(dateToCheck, now);
-				System.out.println("    Current Age (Days)=" + ageDays + ", Filter: From="
-						+ filters.getFileAgeDaysFrom() + ", To=" + filters.getFileAgeDaysTo());
+				Logger.info("    Current Age (Days)=" + ageDays + ", Filter: From=" + filters.getFileAgeDaysFrom()
+						+ ", To=" + filters.getFileAgeDaysTo());
 				if (filters.getFileAgeDaysFrom() != null && ageDays < filters.getFileAgeDaysFrom()) {
-					System.out.println("    EXCLUDED: File age (days) less than 'from' days.");
+					Logger.info("    EXCLUDED: File age (days) less than 'from' days.");
 					return false;
 				}
 				if (filters.getFileAgeDaysTo() != null && ageDays > filters.getFileAgeDaysTo()) {
-					System.out.println("    EXCLUDED: File age (days) greater than 'to' days.");
+					Logger.info("    EXCLUDED: File age (days) greater than 'to' days.");
 					return false;
 				}
 			}
@@ -190,14 +196,14 @@ public class FileFilterUtility {
 			// Check Months
 			if (filters.getFileAgeMonthsFrom() != null || filters.getFileAgeMonthsTo() != null) {
 				long ageMonths = ChronoUnit.MONTHS.between(dateToCheck, now);
-				System.out.println("    Current Age (Months)=" + ageMonths + ", Filter: From="
-						+ filters.getFileAgeMonthsFrom() + ", To=" + filters.getFileAgeMonthsTo());
+				Logger.info("    Current Age (Months)=" + ageMonths + ", Filter: From=" + filters.getFileAgeMonthsFrom()
+						+ ", To=" + filters.getFileAgeMonthsTo());
 				if (filters.getFileAgeMonthsFrom() != null && ageMonths < filters.getFileAgeMonthsFrom()) {
-					System.out.println("    EXCLUDED: File age (months) less than 'from' months.");
+					Logger.info("    EXCLUDED: File age (months) less than 'from' months.");
 					return false;
 				}
 				if (filters.getFileAgeMonthsTo() != null && ageMonths > filters.getFileAgeMonthsTo()) {
-					System.out.println("    EXCLUDED: File age (months) greater than 'to' months.");
+					Logger.info("    EXCLUDED: File age (months) greater than 'to' months.");
 					return false;
 				}
 			}
@@ -205,20 +211,20 @@ public class FileFilterUtility {
 			// Check Years
 			if (filters.getFileAgeYearsFrom() != null || filters.getFileAgeYearsTo() != null) {
 				long ageYears = ChronoUnit.YEARS.between(dateToCheck, now);
-				System.out.println("    Current Age (Years)=" + ageYears + ", Filter: From="
-						+ filters.getFileAgeYearsFrom() + ", To=" + filters.getFileAgeYearsTo());
+				Logger.info("    Current Age (Years)=" + ageYears + ", Filter: From=" + filters.getFileAgeYearsFrom()
+						+ ", To=" + filters.getFileAgeYearsTo());
 				if (filters.getFileAgeYearsFrom() != null && ageYears < filters.getFileAgeYearsFrom()) {
-					System.out.println("    EXCLUDED: File age (years) less than 'from' years.");
+					Logger.info("    EXCLUDED: File age (years) less than 'from' years.");
 					return false;
 				}
 				if (filters.getFileAgeYearsTo() != null && ageYears > filters.getFileAgeYearsTo()) {
-					System.out.println("    EXCLUDED: File age (years) greater than 'to' years.");
+					Logger.info("    EXCLUDED: File age (years) greater than 'to' years.");
 					return false;
 				}
 			}
 			break;
 		default:
-			System.out.println("    Warning: Unknown fileAgeSegmentationType: " + filters.getFileAgeSegmentationType()
+			Logger.info("    Warning: Unknown fileAgeSegmentationType: " + filters.getFileAgeSegmentationType()
 					+ ". Date/Age filter skipped.");
 			break;
 		}
@@ -226,7 +232,7 @@ public class FileFilterUtility {
 	}
 
 	private static boolean checkFileTypeFilters(FileFilters filters, String lowerCaseFileExtension) {
-		System.out.println("  Checking File Type (Extension) Filters. Current extension: " + lowerCaseFileExtension);
+		Logger.info("  Checking File Type (Extension) Filters. Current extension: " + lowerCaseFileExtension);
 		List<String> fileTypes = filters.getFileTypes();
 		String fileTypeIncExc = filters.getFileTypeIncExc();
 
@@ -235,29 +241,29 @@ public class FileFilterUtility {
 					.anyMatch(ext -> ext.toLowerCase().equalsIgnoreCase(lowerCaseFileExtension));
 
 			if ("Include".equalsIgnoreCase(fileTypeIncExc)) {
-				System.out.println("    Include File Types: " + fileTypes);
+				Logger.info("    Include File Types: " + fileTypes);
 				if (!matches) {
-					System.out.println("    EXCLUDED: File type does not match any included type.");
+					Logger.info("    EXCLUDED: File type does not match any included type.");
 					return false;
 				}
 			} else if ("Exclude".equalsIgnoreCase(fileTypeIncExc)) {
-				System.out.println("    Exclude File Types: " + fileTypes);
+				Logger.info("    Exclude File Types: " + fileTypes);
 				if (matches) {
-					System.out.println("    EXCLUDED: File type matches an excluded type.");
+					Logger.info("    EXCLUDED: File type matches an excluded type.");
 					return false;
 				}
 			} else {
-				System.out.println("    Warning: Unknown fileTypeIncExc mode: " + fileTypeIncExc
+				Logger.info("    Warning: Unknown fileTypeIncExc mode: " + fileTypeIncExc
 						+ ". File type filter will be ignored.");
 			}
 		} else {
-			System.out.println("    No file type filters specified.");
+			Logger.info("    No file type filters specified.");
 		}
 		return true;
 	}
 
 	private static boolean checkFileNameFilters(FileFilters filters, String lowerCaseNameWithoutExtension) {
-		System.out.println("  Checking File Name Filters. Name without extension: " + lowerCaseNameWithoutExtension);
+		Logger.info("  Checking File Name Filters. Name without extension: " + lowerCaseNameWithoutExtension);
 		List<FileNameFilterCriteria> fileNameCriteriaList = filters.getFileNameFilterCriteria();
 
 		if (fileNameCriteriaList != null && !fileNameCriteriaList.isEmpty()) {
@@ -267,20 +273,18 @@ public class FileFilterUtility {
 			for (FileNameFilterCriteria criteria : fileNameCriteriaList) {
 				// Ensure paramName is "FILE_NAME"
 				if (!"FILE_NAME".equalsIgnoreCase(criteria.getParamName())) {
-					System.out.println("    Warning: Invalid paramName for FileNameFilterCriteria, skipping: "
+					Logger.info("    Warning: Invalid paramName for FileNameFilterCriteria, skipping: "
 							+ criteria.getParamName());
 					continue;
 				}
 				// Ensure paramValue is not null or empty
 				if (criteria.getParamValue() == null || criteria.getParamValue().trim().isEmpty()) {
-					System.out
-							.println("    Warning: Empty paramValue for FileNameFilterCriteria, skipping: " + criteria);
+					Logger.info("    Warning: Empty paramValue for FileNameFilterCriteria, skipping: " + criteria);
 					continue;
 				}
 				// Ensure criteria2 is not null or empty
 				if (criteria.getCriteria2() == null || criteria.getCriteria2().trim().isEmpty()) {
-					System.out
-							.println("    Warning: Empty criteria2 for FileNameFilterCriteria, skipping: " + criteria);
+					Logger.info("    Warning: Empty criteria2 for FileNameFilterCriteria, skipping: " + criteria);
 					continue;
 				}
 
@@ -298,14 +302,14 @@ public class FileFilterUtility {
 					currentMatch = lowerCaseNameWithoutExtension.endsWith(paramValueLower);
 					break;
 				default:
-					System.out.println("    Warning: Unknown criteria2 for FileNameFilterCriteria: "
-							+ criteria.getCriteria2() + ", skipping.");
+					Logger.info("    Warning: Unknown criteria2 for FileNameFilterCriteria: " + criteria.getCriteria2()
+							+ ", skipping.");
 					continue; // Skip this criteria
 				}
 
 				if ("exclude".equalsIgnoreCase(criteria.getCriteria1())) {
 					if (currentMatch) {
-						System.out.println("    EXCLUDED by filename criteria: " + criteria);
+						Logger.info("    EXCLUDED by filename criteria: " + criteria);
 						return false; // Immediate exclusion
 					}
 				} else if ("include".equalsIgnoreCase(criteria.getCriteria1())) {
@@ -314,25 +318,25 @@ public class FileFilterUtility {
 						anyIncludeMatched = true; // Mark as matched, but keep checking other excludes
 					}
 				} else {
-					System.out.println("    Warning: Unknown criteria1 for FileNameFilterCriteria: "
-							+ criteria.getCriteria1() + ", skipping.");
+					Logger.info("    Warning: Unknown criteria1 for FileNameFilterCriteria: " + criteria.getCriteria1()
+							+ ", skipping.");
 				}
 			}
 
 			// Final check for include criteria: If there were any include rules, but none
 			// matched
 			if (hasIncludeCriteria && !anyIncludeMatched) {
-				System.out.println("    EXCLUDED: Filename did not match any active include filename criteria.");
+				Logger.info("    EXCLUDED: Filename did not match any active include filename criteria.");
 				return false;
 			}
 		} else {
-			System.out.println("    No filename filters specified.");
+			Logger.info("    No filename filters specified.");
 		}
 		return true;
 	}
 
 	private static boolean checkFolderPathFilters(FileFilters filters, String lowerCaseParentPath) {
-		System.out.println("  Checking Folder Path Filters. Current parent path: "
+		Logger.info("  Checking Folder Path Filters. Current parent path: "
 				+ (lowerCaseParentPath != null ? lowerCaseParentPath : "[root]"));
 		List<FolderPathFilterCriteria> folderPathCriteriaList = filters.getFolderPathFilterCriteria();
 
@@ -343,14 +347,13 @@ public class FileFilterUtility {
 			for (FolderPathFilterCriteria criteria : folderPathCriteriaList) {
 				// Ensure paramName is "FOLDER_PATH"
 				if (!"FOLDER_PATH".equalsIgnoreCase(criteria.getParamName())) {
-					System.out.println("    Warning: Invalid paramName for FolderPathFilterCriteria, skipping: "
+					Logger.info("    Warning: Invalid paramName for FolderPathFilterCriteria, skipping: "
 							+ criteria.getParamName());
 					continue;
 				}
 				// Ensure paramValue is not null or empty
 				if (criteria.getParamValue() == null || criteria.getParamValue().trim().isEmpty()) {
-					System.out.println(
-							"    Warning: Empty paramValue for FolderPathFilterCriteria, skipping: " + criteria);
+					Logger.info("    Warning: Empty paramValue for FolderPathFilterCriteria, skipping: " + criteria);
 					continue;
 				}
 
@@ -369,7 +372,7 @@ public class FileFilterUtility {
 
 				if ("exclude".equalsIgnoreCase(criteria.getCriteria1())) {
 					if (currentMatch) {
-						System.out.println("    EXCLUDED by folder path criteria: " + criteria);
+						Logger.info("    EXCLUDED by folder path criteria: " + criteria);
 						return false; // Immediate exclusion
 					}
 				} else if ("include".equalsIgnoreCase(criteria.getCriteria1())) {
@@ -378,7 +381,7 @@ public class FileFilterUtility {
 						anyIncludeMatched = true;
 					}
 				} else {
-					System.out.println("    Warning: Unknown criteria1 for FolderPathFilterCriteria: "
+					Logger.info("    Warning: Unknown criteria1 for FolderPathFilterCriteria: "
 							+ criteria.getCriteria1() + ", skipping.");
 				}
 			}
@@ -386,69 +389,67 @@ public class FileFilterUtility {
 			// Final check for include criteria: If there were any include rules, but none
 			// matched
 			if (hasIncludeCriteria && !anyIncludeMatched) {
-				System.out.println("    EXCLUDED: Folder path did not match any active include folder path criteria.");
+				Logger.info("    EXCLUDED: Folder path did not match any active include folder path criteria.");
 				return false;
 			}
 		} else {
-			System.out.println("    No folder path filters specified.");
+			Logger.info("    No folder path filters specified.");
 		}
 		return true;
 	}
 
 	private static boolean checkFileOwnerFilters(FileFilters filters, String fileOwnerName) {
-		System.out.println("  Checking File Owner Filters. Current owner: " + fileOwnerName);
+		Logger.info("  Checking File Owner Filters. Current owner: " + fileOwnerName);
 		List<String> includeFileOwners = filters.getIncludeFileOwner();
 		List<String> excludeFileOwners = filters.getExcludeFileOwner();
 
 		if (includeFileOwners != null && !includeFileOwners.isEmpty()) {
-			System.out.println("    Include File Owners: " + includeFileOwners);
+			Logger.info("    Include File Owners: " + includeFileOwners);
 			if (includeFileOwners.stream().noneMatch(ownerCheck -> ownerCheck.equalsIgnoreCase(fileOwnerName))) {
-				System.out.println("    EXCLUDED: Owner does not match any included owner.");
+				Logger.info("    EXCLUDED: Owner does not match any included owner.");
 				return false;
 			}
 		} else {
-			System.out.println("    No include file owners specified.");
+			Logger.info("    No include file owners specified.");
 		}
 
 		if (excludeFileOwners != null && !excludeFileOwners.isEmpty()) {
-			System.out.println("    Exclude File Owners: " + excludeFileOwners);
+			Logger.info("    Exclude File Owners: " + excludeFileOwners);
 			if (excludeFileOwners.stream().anyMatch(ownerCheck -> ownerCheck.equalsIgnoreCase(fileOwnerName))) {
-				System.out.println("    EXCLUDED: Owner matches an excluded owner.");
+				Logger.info("    EXCLUDED: Owner matches an excluded owner.");
 				return false;
 			}
 		} else {
-			System.out.println("    No exclude file owners specified.");
+			Logger.info("    No exclude file owners specified.");
 		}
 		return true;
 	}
 
 	private static boolean checkSizeFilters(FileFilters filters, long fileSizeKB) {
-		System.out.println("  Checking Size Filters. File size (KB): " + fileSizeKB);
+		Logger.info("  Checking Size Filters. File size (KB): " + fileSizeKB);
 		if (filters.getSizeFromKB() != null) {
 			if (fileSizeKB < filters.getSizeFromKB()) {
-				System.out.println("    EXCLUDED: File size (" + fileSizeKB + "KB) less than min size ("
+				Logger.info("    EXCLUDED: File size (" + fileSizeKB + "KB) less than min size ("
 						+ filters.getSizeFromKB() + "KB).");
 				return false;
 			} else {
-				System.out.println("    File meets min size criteria (>= " + filters.getSizeFromKB() + "KB).");
+				Logger.info("    File meets min size criteria (>= " + filters.getSizeFromKB() + "KB).");
 			}
 		} else {
-			System.out.println("    No min size specified.");
+			Logger.info("    No min size specified.");
 		}
 
 		if (filters.getSizeToKB() != null) {
 			if (fileSizeKB > filters.getSizeToKB()) {
-				System.out.println("    EXCLUDED: File size (" + fileSizeKB + "KB) greater than max size ("
+				Logger.info("    EXCLUDED: File size (" + fileSizeKB + "KB) greater than max size ("
 						+ filters.getSizeToKB() + "KB).");
 				return false;
 			} else {
-				System.out.println("    File meets max size criteria (<= " + filters.getSizeToKB() + "KB).");
+				Logger.info("    File meets max size criteria (<= " + filters.getSizeToKB() + "KB).");
 			}
 		} else {
-			System.out.println("    No max size specified.");
+			Logger.info("    No max size specified.");
 		}
 		return true;
 	}
 }
-
-

@@ -21,11 +21,11 @@ public interface FileCopyService {
 
 	List<Map<String, Object>> purgeOnly(String sourcePath, BigDecimal runId, FileFilters filters);
 
-	ResponseEntity<Resource> download(List<String> targetPath) throws  Exception;
+	ResponseEntity<Resource> download(List<String> targetPath) throws Exception;
 
 	FolderContentResponse getFolderDetailsByPage(FolderDetailsRequest request, int pageNumber, int maxResultPerPage)
 			throws IOException;
 
-	
+	ResponseEntity<Resource> downloadLogAsZip();
 
 }

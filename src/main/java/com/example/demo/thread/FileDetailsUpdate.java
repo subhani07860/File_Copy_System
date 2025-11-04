@@ -32,11 +32,16 @@ import javax.crypto.CipherOutputStream;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.example.demo.dto.FileFilters;
 import com.example.demo.entity.FileMetaData;
 import com.example.demo.repository.FileDetailsStore;
 
 public class FileDetailsUpdate implements Runnable {
+
+	private static final Logger logger = LoggerFactory.getLogger(FileDetailsUpdate.class);
 
 	private File sourceFile;
 	private File destinationBase;
@@ -126,8 +131,10 @@ public class FileDetailsUpdate implements Runnable {
 				File finalDestinationFileWithExtensions = new File(finalDestinationFile.getParentFile(),
 						effectiveFileNameBuilder.toString());
 
-				System.out.println("Determined final destination file path (with extensions): "
-						+ finalDestinationFileWithExtensions.getAbsolutePath());
+//				System.out.println("Determined final destination file path (with extensions): "
+//						+ finalDestinationFileWithExtensions.getAbsolutePath());
+				logger.info("Determined final destination file path (with extensions): {}",
+						finalDestinationFileWithExtensions.getAbsolutePath());
 
 				// Check if versioning is enabled
 				if (filters != null && "y".equalsIgnoreCase(filters.getVersionEnable())) {
@@ -155,21 +162,27 @@ public class FileDetailsUpdate implements Runnable {
 						String oldFileName = nameWithoutExtension + timestamp + extension;
 						File oldFile = new File(finalDestinationFileWithExtensions.getParent(), oldFileName);
 
-						System.out.println("Attempting to rename existing file '"
-								+ finalDestinationFileWithExtensions.getAbsolutePath() + "' to '"
-								+ oldFile.getAbsolutePath() + "' for versioning.");
+//						System.out.println("Attempting to rename existing file '"
+//								+ finalDestinationFileWithExtensions.getAbsolutePath() + "' to '"
+//								+ oldFile.getAbsolutePath() + "' for versioning.");
+						logger.info("Attempting to rename existing file '{}' to '{}' for versioning.",
+								finalDestinationFileWithExtensions.getAbsolutePath(), oldFile.getAbsolutePath());
 
 						if (finalDestinationFileWithExtensions.renameTo(oldFile)) {
-							System.out.println("Existing file renamed for versioning: " + oldFile.getName());
+//							System.out.println("Existing file renamed for versioning: " + oldFile.getName());
+							logger.info("Existing file renamed for versioning: {}", oldFile.getName());
 						} else {
-							System.err.println("Failed to rename existing file for versioning: "
-									+ finalDestinationFileWithExtensions.getAbsolutePath());
+//							System.err.println("Failed to rename existing file for versioning: "
+//									+ finalDestinationFileWithExtensions.getAbsolutePath());
+							logger.error("Failed to rename existing file for versioning: {}",
+									finalDestinationFileWithExtensions.getAbsolutePath());
 						}
 					}
 					isVersionEnabledStatus = "y";
 					System.out.println("Versioning enabled: New file will be saved with its original name.");
 				}
 
+				String isArchived = "N";
 				try (FileInputStream in = new FileInputStream(sourceFile);
 						OutputStream finalOutputStream = createChainedOutputStream(
 								new FileOutputStream(finalDestinationFileWithExtensions), encryptionStatus,
@@ -192,17 +205,14 @@ public class FileDetailsUpdate implements Runnable {
 
 					if (sourceChecksum != null && sourceChecksum.equals(targetChecksum)) {
 						validationStatus = "Y";
+						isArchived = "Y"; // Mark as archived only if validation is successful
+					}
+
+					if (sourceFile.getName().endsWith(".txt")) {
+						throw new RuntimeException("This file is not supported");
 					}
 
 					Map<String, Object> metadata = buildMetadata1(sourceFile, finalDestinationFileWithExtensions);
-					metadata.put("sourceChecksum", sourceChecksum);
-					metadata.put("targetChecksum", targetChecksum);
-					metadata.put("validationStatus", validationStatus);
-					metadata.put("isVersionEnable", isVersionEnabledStatus);
-					metadata.put("isEncryptionEnabled", encryptionStatus);
-					metadata.put("encryptionKey", "y".equalsIgnoreCase(encryptionStatus) ? encryptionKey : null);
-					metadata.put("isCompressionEnabled", compressionStatus);
-
 					// --- NEW DUPLICATE CHECK LOGIC ---
 					if (filters != null && "Y".equalsIgnoreCase(filters.getRunCheckDuplicate())) {
 						String targetPathForCheck = (String) metadata.get("targetPath");
@@ -212,51 +222,90 @@ public class FileDetailsUpdate implements Runnable {
 							List<FileMetaData> existingDuplicates = fileDetailsStore
 									.findAllByTargetPathAndTargetFileName(targetPathForCheck, targetFileNameForCheck);
 							if (!existingDuplicates.isEmpty()) {
-								System.out.println("RUN_CHECK_DUPLICATE: Found " + existingDuplicates.size()
-										+ " existing duplicate entries for " + targetFileNameForCheck + " in "
-										+ targetPathForCheck + ". Deleting older entries.");
+//								System.out.println("RUN_CHECK_DUPLICATE: Found " + existingDuplicates.size()
+//										+ " existing duplicate entries for " + targetFileNameForCheck + " in "
+//										+ targetPathForCheck + ". Deleting older entries.");
+								logger.info(
+										"RUN_CHECK_DUPLICATE: Found {} existing duplicate entries for {} in {}. Deleting older entries.",
+										existingDuplicates.size(), targetFileNameForCheck, targetPathForCheck);
 								fileDetailsStore.deleteAll(existingDuplicates); // Delete all previously existing
 																				// duplicates
 							}
 						}
 					}
-					metadataList.add(metadata);
-					saveMetaData(metadata);
-
-					System.out.println("Copied From: " + sourceFile.getAbsolutePath());
-					System.out.println("Copied To  : " + finalDestinationFileWithExtensions.getAbsolutePath());
-					System.out.println("Source Checksum: " + sourceChecksum);
-					System.out.println("Target Checksum: " + targetChecksum);
-					System.out.println("Validation Status: " + validationStatus);
 
 				} catch (IOException e) {
-					System.err.println("Error copying file: " + sourceFile.getAbsolutePath() + " - " + e.getMessage());
-					e.printStackTrace();
-
+//					System.err.println("Error copying file: " + sourceFile.getAbsolutePath() + " - " + e.getMessage());
+//					e.printStackTrace();
+					logger.error("Error copying file: {} - {}", sourceFile.getAbsolutePath(), e.getMessage());
+					isArchived = "N";
 				} catch (NoSuchAlgorithmException e) {
-					System.err.println("Checksum algorithm not found: " + e.getMessage());
-					e.printStackTrace();
-
+//					System.err.println("Checksum algorithm not found: " + e.getMessage());
+//					e.printStackTrace();
+					logger.error("Checksum algorithm not found: {}", e.getMessage());
+					isArchived = "N";
 				} catch (NoSuchPaddingException e) {
-					System.err.println("Cipher padding error: " + e.getMessage());
-					e.printStackTrace();
-
+//					System.err.println("Cipher padding error: " + e.getMessage());
+//					e.printStackTrace();
+					logger.error("Cipher padding error: {}", e.getMessage());
+					isArchived = "N";
 				} catch (InvalidKeyException e) {
-					System.err.println("Invalid encryption key: " + e.getMessage());
-					e.printStackTrace();
+//					System.err.println("Invalid encryption key: " + e.getMessage());
+//					e.printStackTrace();
+					logger.error("Invalid encryption key: {}", e.getMessage());
+					isArchived = "N";
+				} catch (Exception e) {
+//					System.err.println("General error during file copy: " + e.getMessage());
+//					e.printStackTrace();
+					logger.error("General error during file copy: {}", e.getMessage());
+					isArchived = "N";
+				} finally {
+					Map<String, Object> metadata = buildMetadata1(sourceFile, finalDestinationFileWithExtensions);
+					metadata.put("sourceChecksum", sourceChecksum);
+					metadata.put("targetChecksum", targetChecksum);
+					metadata.put("validationStatus", validationStatus);
+					metadata.put("isVersionEnable", isVersionEnabledStatus);
+					metadata.put("isEncryptionEnabled", encryptionStatus);
+					metadata.put("encryptionKey", "y".equalsIgnoreCase(encryptionStatus) ? encryptionKey : null);
+					metadata.put("isCompressionEnabled", compressionStatus);
+					metadata.put("runId", runId);
+
+					metadata.put("isArchived", isArchived);
+//					System.out.println("isArchived initial value set to: " + isArchived);
+					logger.info("isArchived initial value set to: {}", isArchived);
+
+					metadataList.add(metadata);
+
+					saveMetaData(metadata);
+
+//					System.out.println("Copied From: " + sourceFile.getAbsolutePath());
+//					System.out.println("Copied To  : " + finalDestinationFileWithExtensions.getAbsolutePath());
+//					System.out.println("Source Checksum: " + sourceChecksum);
+//					System.out.println("Target Checksum: " + targetChecksum);
+//					System.out.println("Validation Status: " + validationStatus);
+					logger.info("Copied From: {}", sourceFile.getAbsolutePath());
+					logger.info("Copied To  : {}", finalDestinationFileWithExtensions.getAbsolutePath());
+					logger.info("Source Checksum: {}", sourceChecksum);
+					logger.info("Target Checksum: {}", targetChecksum);
+					logger.info("Validation Status: {}", validationStatus);
 
 				}
 
 				if ("copyandpurge".equalsIgnoreCase(activity)) {
 					if (validationStatus.equals("Y") && sourceFile.delete()) { // Only delete if validation
 																				// successful
-						System.out.println("Deleted source file after successful copy and validation: "
-								+ sourceFile.getAbsolutePath());
+//						System.out.println("Deleted source file after successful copy and validation: "
+//								+ sourceFile.getAbsolutePath());
+						logger.info("Deleted source file after successful copy and validation: {}",
+								sourceFile.getAbsolutePath());
 					} else if (!validationStatus.equals("Y")) {
-						System.out.println("Skipping deletion of source file due to validation failure: "
-								+ sourceFile.getAbsolutePath());
+//						System.out.println("Skipping deletion of source file due to validation failure: "
+//								+ sourceFile.getAbsolutePath());
+						logger.warn("Skipping deletion of source file due to validation failure: {}",
+								sourceFile.getAbsolutePath());
 					} else {
-						System.err.println("Failed to delete file: " + sourceFile.getAbsolutePath());
+//						System.err.println("Failed to delete file: " + sourceFile.getAbsolutePath());
+						logger.error("Failed to delete file: {}", sourceFile.getAbsolutePath());
 					}
 				}
 			} else if ("purgeonly".equalsIgnoreCase(activity)) {
@@ -274,25 +323,30 @@ public class FileDetailsUpdate implements Runnable {
 //					}
 					sourceFile.delete();
 				} catch (Exception e) {
-					System.err.println("Error during purge operation: " + e.getMessage());
-					e.printStackTrace();
+//					System.err.println("Error during purge operation: " + e.getMessage());
+//					e.printStackTrace();
+					logger.error("Error during purge operation: {}", e.getMessage());
 				}
 			} else if ("preview".equalsIgnoreCase(activity)) {
 
 				Map<String, Object> metadata = buildMetadata1(sourceFile, finalDestinationFile);
 				metadataList.add(metadata);
 				// In preview, we might want to log the proposed destination path
-				System.out.println("Preview: " + sourceFile.getAbsolutePath() + " -> "
-						+ (finalDestinationFile != null ? finalDestinationFile.getAbsolutePath() : "N/A (no copy)"));
+//				System.out.println("Preview: " + sourceFile.getAbsolutePath() + " -> "
+//						+ (finalDestinationFile != null ? finalDestinationFile.getAbsolutePath() : "N/A (no copy)"));
+				logger.info("Preview: {} -> {}", sourceFile.getAbsolutePath(),
+						(finalDestinationFile != null ? finalDestinationFile.getAbsolutePath() : "N/A (no copy)"));
 
 			}
 
 			else {
-				System.out.println("Unknown activity: " + activity);
+//				System.out.println("Unknown activity: " + activity);
+				logger.warn("Unknown activity: {}", activity);
 			}
 			return;
 		} else {
-			System.out.println("Skipping file due to filter criteria: " + sourceFile.getAbsolutePath());
+//			System.out.println("Skipping file due to filter criteria: " + sourceFile.getAbsolutePath());
+			logger.info("Skipping file due to filter criteria: {}", sourceFile.getAbsolutePath());
 		}
 
 	}
@@ -305,12 +359,14 @@ public class FileDetailsUpdate implements Runnable {
 
 		// Compression before encryption is generally more efficient
 		if ("y".equalsIgnoreCase(compressionStatus)) {
-			System.out.println("Applying GZIP Compression.");
+//			System.out.println("Applying GZIP Compression.");
+			logger.info("Applying GZIP Compression.");
 			currentOutputStream = new GZIPOutputStream(currentOutputStream);
 		}
 
 		if ("y".equalsIgnoreCase(encryptionStatus)) {
 			if (encryptionKey == null || encryptionKey.isEmpty()) {
+				logger.error("Encryption key is null or empty while encryption is enabled.");
 				throw new IllegalArgumentException(
 						"Encryption key cannot be null or empty when encryption is enabled.");
 			}
@@ -322,7 +378,8 @@ public class FileDetailsUpdate implements Runnable {
 			SecretKeySpec secretKey = new SecretKeySpec(decodedKey, "AES");
 			Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
 			cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-			System.out.println("Applying AES Encryption.");
+//			System.out.println("Applying AES Encryption.");
+			logger.info("Applying AES Encryption.");
 			currentOutputStream = new CipherOutputStream(currentOutputStream, cipher);
 		}
 		return currentOutputStream;
@@ -350,7 +407,7 @@ public class FileDetailsUpdate implements Runnable {
 				meta.setCreationDate((String) metadata.get("CreationDate"));
 				meta.setModificationDate((String) metadata.get("ModifiedDate"));
 				meta.setRunId(runId);
-				meta.setCreatedAt(LocalDateTime.now());
+				meta.setCreatedAt(LocalDateTime.now().toString());
 				if ("copy".equalsIgnoreCase(activity) || "copyandpurge".equalsIgnoreCase(activity)) {
 					meta.setTargetPath((String) metadata.get("targetPath")); // Already processed to be parent path
 					meta.setTargetFileName((String) metadata.get("targetfileName"));
@@ -361,6 +418,7 @@ public class FileDetailsUpdate implements Runnable {
 					meta.setFileEncryption((String) metadata.get("isEncryptionEnabled"));
 					meta.setFileEncryptionKey((String) metadata.get("encryptionKey"));
 					meta.setFileCompression((String) metadata.get("isCompressionEnabled"));
+					meta.setIsArchived((String) metadata.get("isArchived"));
 
 				} else {
 					meta.setTargetPath(null);
@@ -375,17 +433,21 @@ public class FileDetailsUpdate implements Runnable {
 
 				int count = fileCounter.incrementAndGet();
 				String fileId = runId + "." + String.format("%03d", count);
-				meta.setFileId(fileId);
 
+				meta.setFileId(fileId);
+				metadata.put("fileId", fileId);
 				fileDetailsStore.save(meta);
 
 			} catch (Exception e) {
-				System.err.println(
-						"Error saving metadata for file: " + metadata.get("fileName") + " - " + e.getMessage());
-				e.printStackTrace();
+//				System.err.println(
+//						"Error saving metadata for file: " + metadata.get("fileName") + " - " + e.getMessage());
+//				e.printStackTrace();
+				logger.error("Error saving metadata for file: {} - {}", metadata.get("fileName"), e.getMessage());
+
 			}
 		} else {
-			System.out.println("Warning: Metadata will not be saved. runId, fileDetailsStore, or fileCounter is null.");
+//			System.out.println("Warning: Metadata will not be saved. runId, fileDetailsStore, or fileCounter is null.");
+			logger.warn("Metadata will not be saved. runId, fileDetailsStore, or fileCounter is null.");
 		}
 	}
 
@@ -412,7 +474,6 @@ public class FileDetailsUpdate implements Runnable {
 				dMap.put("CreationDate", attrs.creationTime().toString());
 				dMap.put("Size", source.length());
 				dMap.put("FileSrcPath", source.getParent());
-
 				dMap.put("ModifiedDate", attrs.lastModifiedTime().toString());
 				dMap.put("fileType", extension);
 				dMap.put("Author", owner != null ? owner.getName() : "UNKNOWN");
@@ -425,12 +486,14 @@ public class FileDetailsUpdate implements Runnable {
 				}
 
 			} catch (IOException e) {
-				System.err.println(
-						"Error retrieving metadata for file: " + source.getAbsolutePath() + " - " + e.getMessage());
-				e.printStackTrace();
+//				System.err.println(
+//						"Error retrieving metadata for file: " + source.getAbsolutePath() + " - " + e.getMessage());
+//				e.printStackTrace();
+				logger.error("Error retrieving metadata for file: {} - {}", source.getAbsolutePath(), e.getMessage());
 			}
 		} else {
-			System.out.println("Source file does not exist when building metadata: " + source.getAbsolutePath());
+//			System.out.println("Source file does not exist when building metadata: " + source.getAbsolutePath());
+			logger.warn("Source file does not exist when building metadata: {}", source.getAbsolutePath());
 		}
 		return dMap;
 	}
@@ -491,13 +554,16 @@ public class FileDetailsUpdate implements Runnable {
 
 			finalDestinationFilePathString = Paths.get(destinationBase.getAbsolutePath(), sourceRootFolderName,
 					relativePathFromSourceRootToSourceFile.toString()).normalize().toString();
-			System.out.println(
-					"DEBUG (includeSourcePath=Y) - Constructed path segment for source root: " + sourceRootFolderName);
+			logger.debug("Constructed path segment for source root (includeSourcePath=Y): {}", sourceRootFolderName);
+
+//			System.out.println(
+//					"DEBUG (includeSourcePath=Y) - Constructed path segment for source root: " + sourceRootFolderName);
 
 		} else {
 			// Defaulting to "N" behavior if includeSourcePath is null or invalid
-			System.out
-					.println("Warning: Invalid or missing includeSourcePath value. Defaulting to Include=N behavior.");
+//			System.out
+//					.println("Warning: Invalid or missing includeSourcePath value. Defaulting to Include=N behavior.");
+			logger.warn("Invalid or missing includeSourcePath value. Defaulting to Include=N behavior.");
 			finalDestinationFilePathString = Paths
 					.get(destinationBase.getAbsolutePath(), relativePathFromSourceRootToSourceFile.toString())
 					.normalize().toString();

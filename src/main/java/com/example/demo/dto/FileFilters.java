@@ -57,5 +57,7 @@ public class FileFilters {
 
     private List<String> includeFileOwner;
     private List<String> excludeFileOwner;
+	
+    private String kbId;
    
 }

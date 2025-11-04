@@ -13,5 +13,6 @@ public class CopyRequest {
 	private String activity;
 
 	private FileFilters filters;
+	private String kbId;
 
 }

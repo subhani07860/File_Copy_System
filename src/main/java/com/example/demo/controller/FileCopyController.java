@@ -7,7 +7,8 @@ import com.example.demo.dto.FolderDetailsRequest;
 import com.example.demo.service.EncryptionKeyGenerator;
 import com.example.demo.service.FileCopyService;
 import com.example.demo.service.nextRunIdGenerator;
-
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api")
 public class FileCopyController {
 
+	private static final Logger Logger = LoggerFactory.getLogger(FileCopyController.class);
 	@Autowired
 	private FileCopyService fileCopyService;
 
@@ -51,6 +53,7 @@ public class FileCopyController {
 			if (srcPath == null || destPath == null) {
 				return ResponseEntity.badRequest()
 						.body(Map.of("error", "Source and destination must be provided for copy activities."));
+
 			}
 		} else {
 			return ResponseEntity.badRequest().body(
@@ -63,7 +66,7 @@ public class FileCopyController {
 
 		if ("y".equalsIgnoreCase(isEncryptionEnabled)) {
 			encryptionKey = EncryptionKeyGenerator.generateKey();
-			System.out.println("Generated encryption key for run " + runId + ": " + encryptionKey);
+			Logger.info("Generated encryption key for run {}: {}", runId, encryptionKey);
 		}
 
 		List<Map<String, Object>> fileDetails = fileCopyService.copyFiles(srcPath, destPath, runId, activity, filters,
@@ -111,7 +114,7 @@ public class FileCopyController {
 		FileFilters filters = request.getFilters();
 
 		if (sourcePath == null) {
-			System.out.println("sourcePath must provide to PurgeOnly ");
+			Logger.error("sourcePath must provide to PurgeOnly ");
 		}
 		BigDecimal runId = nextRunIdGenerator.generateNextRunId();
 		fileCopyService.purgeOnly(sourcePath, runId, filters);
@@ -154,6 +157,11 @@ public class FileCopyController {
 			errorResponse.setStatus("There is no such type of file/folder");
 			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
 		}
+	}
+
+	@GetMapping("/download-logs")
+	public ResponseEntity<Resource> downloadLogs() {
+		return fileCopyService.downloadLogAsZip();
 	}
 
 }
