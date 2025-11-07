@@ -191,15 +191,33 @@ public class FilesCopyThread implements Runnable {
 	private void insertMDEDMS(List<Map<String, Object>> rows, String kbId, Connection conn) throws SQLException {
 		String tableName = "edms_filearchive_metadata_" + kbId;
 
-		String createTableSQL = "CREATE TABLE IF NOT EXISTS " + tableName + " LIKE file_meta_data";
+		String createTableSQL = "CREATE TABLE IF NOT EXISTS " + tableName + " (" + "file_id varchar(100) NULL, "
+				+ "file_path varchar(1000) NULL, " + "creation_date varchar(50) NULL, " + "size BIGINT NULL,"
+				+ "file_name varchar(1000) null, " + "file_src_path varchar(4000) null, "
+				+ "target_path varchar(1000) null, " + "modification_date varchar(50) null, "
+				+ "file_type varchar(100) null, " + "author varchar(200) null, "
+				+ "target_file_name varchar(1000) null, " + "source_checksum varchar(200) null, "
+				+ "target_checksum varchar(200) null, " + "validation_status varchar(50) null, "
+				+ "run_id decimal(20,0) null, " + "is_archived varchar(5) null, "
+				+ "is_version_enable varchar(5) null, " + "file_encryption varchar(5) null, "
+				+ "file_encryption_key varchar(500) null, " + "file_compression varchar(5) null, "
+				+ "created_at varchar(50) null, "
+				+ "legal_holds_applied varchar(1) NULL,"
+//				+ "legal_holds_applied varchar(1) DEFAULT 'N' CHECK (legal_holds_applied IN ('Y','N')), "
+				+ "legal_holds_run_id decimal(20,0) NULL, "
+				+ "retention_applied varchar(1) NULL,"
+//				+ "retention_applied varchar(1) DEFAULT 'N' CHECK (retention_applied IN ('Y','N')), "
+				+ "retention_run_id decimal(20,0) NULL" + ")";
+
 		try (PreparedStatement createStmt = conn.prepareStatement(createTableSQL)) {
 			createStmt.execute();
 		}
 
 		String insertSQL = "INSERT INTO " + tableName + " (file_id, file_path, creation_date, size, file_name, "
 				+ "file_src_path, target_path, modification_date, file_type, author, target_file_name, "
-				+ "source_checksum, target_checksum, validation_status, run_id, is_archived,is_version_enable,file_encryption,file_encryption_key,file_compression,created_at) "
-				+ "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
+				+ "source_checksum, target_checksum, validation_status, run_id, is_archived,is_version_enable,"
+				+ "file_encryption,file_encryption_key,file_compression,created_at,legal_holds_applied,legal_holds_run_id, retention_applied,retention_run_id) "
+				+ "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
 
 		try (PreparedStatement insertStmt = conn.prepareStatement(insertSQL)) {
 			int count = 0;
@@ -225,15 +243,30 @@ public class FilesCopyThread implements Runnable {
 				insertStmt.setString(19, (String) row.get("file_encryption_key"));
 				insertStmt.setString(20, (String) row.get("file_compression"));
 				insertStmt.setString(21, (String) row.get("created_at"));
+//				insertStmt.setString(22, (String) row.getOrDefault("legal_holds_applied", "N"));
+				insertStmt.setString(22, "N");
+				insertStmt.setBigDecimal(23, (BigDecimal) row.get("legal_holds_run_id"));
+//				insertStmt.setString(24, (String) row.getOrDefault("retention_applied", "N"));
+				insertStmt.setString(24, "N");
+				insertStmt.setBigDecimal(25, (BigDecimal) row.get("retention_run_id"));
 
 				insertStmt.addBatch();
-				if (++count % 5 == 0) {
+				count = count + 1;
+//				if (count % 5 == 0 || count == rows.size()) {
+//					insertStmt.executeBatch();
+//					logger.info("Prepared {} records for insertion into {}", count, tableName);
+//				}
+				if (count == 5) {
 					insertStmt.executeBatch();
-					logger.info("batch completed for {} records", count);
+					count = 0;
+					logger.info("Prepared 5 records for insertion into {}", tableName);
 				}
 			}
-			insertStmt.executeBatch();
-			logger.info("Inserted {} records into {}", rows.size(), tableName);
+			if (count > 0) {
+				insertStmt.executeBatch();
+				logger.info("Prepared {} records for insertion into {}", tableName);
+			}
+
 		}
 	}
 

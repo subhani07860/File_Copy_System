@@ -2,7 +2,7 @@ package com.example.demo.util;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,56 +17,53 @@ import java.util.zip.ZipOutputStream;
 @Service
 public class LogDownloadService {
 
-    private static final Logger logger = LoggerFactory.getLogger(LogDownloadService.class);
+	private static final Logger logger = LoggerFactory.getLogger(LogDownloadService.class);
 
-    // configurable log file path (use application.properties if available)
-    private static final String LOG_DIRECTORY = "logs";
-    private static final String LOG_FILE_NAME = "application.log";
+	// Store logs on D: drive
+	private static final String LOG_DIRECTORY = "D:\\file-transfer-logs";
+	private static final String LOG_FILE_NAME = "application.log";
 
-    /**
-     * Compresses the log file into a .zip and returns it as a downloadable Resource.
-     */
-    public ResponseEntity<Resource> downloadLogAsZip() {
-        Path logPath = Paths.get(LOG_DIRECTORY, LOG_FILE_NAME);
-        if (!Files.exists(logPath)) {
-            logger.error("Log file not found at: {}", logPath.toAbsolutePath());
-            return ResponseEntity.notFound().build();
-        }
+	/**
+	 * Compresses the log file in-memory and streams it as a downloadable response.
+	 * No zip file will be saved permanently on disk.
+	 */
+	public ResponseEntity<Resource> downloadLogAsZip() {
+		Path logPath = Paths.get(LOG_DIRECTORY, LOG_FILE_NAME);
 
-        // Create zipped file
-        Path zipPath = logPath.resolveSibling(LOG_FILE_NAME.replace(".log", ".zip"));
+		if (!Files.exists(logPath)) {
+			logger.error("Log file not found at: {}", logPath.toAbsolutePath());
+			return ResponseEntity.notFound().build();
+		}
 
-        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipPath)));
-             BufferedInputStream bis = new BufferedInputStream(Files.newInputStream(logPath))) {
+		try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
+				ZipOutputStream zos = new ZipOutputStream(baos);
+				InputStream logStream = Files.newInputStream(logPath)) {
 
-            ZipEntry entry = new ZipEntry(logPath.getFileName().toString());
-            zos.putNextEntry(entry);
+			// Add log file to zip
+			ZipEntry entry = new ZipEntry(LOG_FILE_NAME);
+			zos.putNextEntry(entry);
 
-            byte[] buffer = new byte[4096];
-            int bytesRead;
-            while ((bytesRead = bis.read(buffer)) != -1) {
-                zos.write(buffer, 0, bytesRead);
-            }
+			byte[] buffer = new byte[4096];
+			int bytesRead;
+			while ((bytesRead = logStream.read(buffer)) != -1) {
+				zos.write(buffer, 0, bytesRead);
+			}
 
-            zos.closeEntry();
-            logger.info("Log file successfully compressed to {}", zipPath.toAbsolutePath());
+			zos.closeEntry();
+			zos.finish(); // finalize zip
 
-        } catch (IOException e) {
-            logger.error("Error while creating log zip file: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError().build();
-        }
+			byte[] zipBytes = baos.toByteArray();
+			ByteArrayResource resource = new ByteArrayResource(zipBytes);
 
-        // Return zipped file as downloadable response
-        try {
-            Resource resource = new InputStreamResource(Files.newInputStream(zipPath));
-            return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + zipPath.getFileName())
-                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                    .contentLength(Files.size(zipPath))
-                    .body(resource);
-        } catch (IOException e) {
-            logger.error("Failed to read zipped log file: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError().build();
-        }
-    }
+			String zipFileName = LOG_FILE_NAME.replace(".log", "_" + System.currentTimeMillis() + ".zip");
+			logger.info("Log file compressed in memory and ready for download: {}", zipFileName);
+
+			return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + zipFileName)
+					.contentType(MediaType.APPLICATION_OCTET_STREAM).contentLength(zipBytes.length).body(resource);
+
+		} catch (IOException e) {
+			logger.error("Error while streaming log zip file: {}", e.getMessage(), e);
+			return ResponseEntity.internalServerError().build();
+		}
+	}
 }
